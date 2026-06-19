@@ -1,0 +1,23 @@
+# Dependencies (downloaded, never committed)
+node_modules/
+
+# Secrets — NEVER commit these
+.env
+.env.local
+.env*.local
+
+# Next.js build output
+.next/
+out/
+client/.next/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS noise
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
