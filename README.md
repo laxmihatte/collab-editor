@@ -98,6 +98,21 @@ npm run dev             # http://localhost:3000
 Register an account and create a note. To see collaboration working, share it
 with a second account and open it in another browser.
 
+### 5. Demo data (optional)
+
+```bash
+cd server && node scripts/seed.js
+```
+
+Seeds three CS notes with runnable code blocks, shared between two accounts:
+
+| Account | Password |
+| ------- | -------- |
+| `demo@notecraft.dev` | `demo-password` |
+| `classmate@notecraft.dev` | `demo-password` |
+
+Sign in as each in two different browsers, open the same note, and type.
+
 ## Tests
 
 With the server running:
