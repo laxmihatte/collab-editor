@@ -1,0 +1,41 @@
+# Self-hosted code execution for the built-in compiler.
+#
+# Piston runs each submission in a disposable sandbox with CPU, memory, and
+# process limits. We host it ourselves because the public instance became
+# whitelist-only in February 2026 — and because owning the sandbox is the only
+# way to make guarantees about what student code can do.
+
+services:
+  piston:
+    image: ghcr.io/engineer-man/piston:latest
+    container_name: notecraft-piston
+    restart: unless-stopped
+    # Piston builds its sandboxes with Linux namespaces and cgroups, which it
+    # cannot set up from inside an unprivileged container. This is why the
+    # service is isolated on its own container in the first place: it is the
+    # one component that needs elevated rights, so nothing else shares them.
+    privileged: true
+    ports:
+      - '2000:2000'
+    environment:
+      # Sandbox limits. These are the reason self-hosting is worth the
+      # container: on the public instance they were fixed, here they are a
+      # product decision. Student code that reads input and prints output
+      # finishes in milliseconds; the ceilings exist to stop infinite loops,
+      # runaway allocation, and print-in-a-loop from filling a response.
+      PISTON_RUN_TIMEOUT: 10000        # ms of wall clock per run
+      PISTON_COMPILE_TIMEOUT: 20000    # ms — javac and g++ are slow to start
+      PISTON_RUN_MEMORY_LIMIT: 256000000
+      PISTON_OUTPUT_MAX_SIZE: 65536    # bytes before output is truncated
+      PISTON_MAX_PROCESS_COUNT: 128
+    volumes:
+      # Installed language runtimes, kept out of the image so a container
+      # rebuild does not re-download several GB of compilers.
+      - piston-packages:/piston/packages
+    tmpfs:
+      # Submission working directories. tmpfs means each run's scratch space
+      # lives in RAM and disappears with the container.
+      - /piston/jobs:exec,size=256m
+
+volumes:
+  piston-packages:

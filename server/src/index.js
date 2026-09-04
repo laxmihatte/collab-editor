@@ -11,42 +11,51 @@ const cookieParser = require('cookie-parser');
 const jwt = require('jsonwebtoken');
 const Y = require('yjs');
 
+const db = require('./db');
 const authRoutes = require('./routes/auth');
-const documentRoutes = require('./routes/documents');
-const { userCanAccess, getDoc, scheduleSave, release } = require('./lib/documentStore');
+const noteRoutes = require('./routes/notes');
+const profileRoutes = require('./routes/profile');
+const { router: reactionRoutes } = require('./routes/reactions');
+const { router: executeRoutes } = require('./routes/execute');
+const { getRole, getDoc, scheduleSave, release } = require('./lib/noteStore');
+const presence = require('./lib/presence');
 
 const app = express();
 const httpServer = http.createServer(app);
 
-// Socket.io is attached to the same HTTP server so they share one port
+// Socket.io shares the HTTP server so both run on one port.
 const io = new Server(httpServer, {
   cors: {
     origin: config.CLIENT_URL,
     methods: ['GET', 'POST'],
     credentials: true, // allow the browser to send the auth cookie
   },
+  maxHttpBufferSize: 2e6, // a single Yjs update should never approach this
 });
 
 app.use(helmet());
 app.use(cors({ origin: config.CLIENT_URL, credentials: true }));
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 
 app.use('/api/auth', authRoutes);
-app.use('/api/documents', documentRoutes);
+app.use('/api/profile', profileRoutes);
+app.use('/api/execute', executeRoutes);
+// Mounted before the notes router so the more specific path wins.
+app.use('/api/notes/:noteId/reactions', reactionRoutes);
+app.use('/api/notes', noteRoutes);
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
 
-// --- Real-time collaboration with Yjs ---
-// Document state is managed by lib/documentStore: loaded from Postgres on first
-// access, kept in memory while clients are editing, debounce-saved on changes,
-// and evicted when the last client leaves.
+// ── Real-time collaboration ─────────────────────────────────────────────────
+// Note content is a Yjs CRDT: lib/noteStore loads it from Postgres on first
+// access, keeps it in memory while people are editing, debounce-saves changes,
+// and evicts it when the last client leaves. lib/presence tracks who is
+// currently looking at each note.
 
-// Authenticate every socket connection using the same JWT as the REST API.
-// The browser sends the httpOnly auth cookie automatically with the handshake
-// (because the client connects with withCredentials). We also accept an
-// auth.token for non-browser clients. Without this, anyone could join any
-// document room and read/write freely.
+// Authenticate every socket with the same JWT as the REST API. The browser
+// sends the httpOnly cookie with the handshake automatically. Without this,
+// anyone could join any note's room and read or write freely.
 function readTokenFromCookie(cookieHeader) {
   if (!cookieHeader) return null;
   for (const part of cookieHeader.split(';')) {
@@ -63,75 +72,143 @@ io.use((socket, next) => {
 
   try {
     socket.user = jwt.verify(token, config.JWT_SECRET);
+    // Roles resolved at join time, keyed by noteId.
+    //
+    // Re-querying Postgres on every keystroke would put a database round trip
+    // in the editing hot path. Access is established once, when the socket
+    // joins the room, and cached for the life of that membership; revoking a
+    // collaborator disconnects them (see revokeAccess below) rather than
+    // relying on the next write to notice.
+    socket.roles = new Map();
     next();
   } catch {
     next(new Error('Invalid or expired token'));
   }
 });
 
-io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id, 'user:', socket.user.id);
+/** The viewer record broadcast to everyone else in a note's room. */
+async function describeViewer(socket, role) {
+  const result = await db.query('SELECT name, avatar_color FROM users WHERE id = $1', [
+    socket.user.id,
+  ]);
+  const user = result.rows[0] ?? {};
+  return {
+    userId: socket.user.id,
+    name: user.name ?? 'Someone',
+    avatarColor: user.avatar_color ?? 'slate',
+    role,
+  };
+}
 
-  // Client joins a document "room" — only if they own it or have permission.
-  socket.on('join-document', async (documentId) => {
+io.on('connection', (socket) => {
+  socket.on('join-note', async (noteId) => {
     try {
-      const allowed = await userCanAccess(documentId, socket.user.id);
-      if (!allowed) {
-        socket.emit('document-error', 'Access denied');
+      const role = await getRole(noteId, socket.user.id);
+      if (!role) {
+        socket.emit('note-error', 'Access denied');
         return;
       }
 
-      socket.join(documentId);
-      const ydoc = await getDoc(documentId);
+      socket.roles.set(noteId, role);
+      socket.join(noteId);
 
-      // Send the current state to the newly joined client (binary).
-      socket.emit('load-document', Y.encodeStateAsUpdate(ydoc));
-      console.log(`Socket ${socket.id} joined document ${documentId}`);
+      const ydoc = await getDoc(noteId);
+      // Binary CRDT state — the full note as of right now.
+      socket.emit('load-note', Y.encodeStateAsUpdate(ydoc), { role });
+
+      const roster = presence.join(noteId, socket.id, await describeViewer(socket, role));
+      io.to(noteId).emit('viewers', roster);
+
+      // Durable view history, separate from live presence.
+      await db.query(
+        `INSERT INTO note_views (note_id, user_id) VALUES ($1, $2)
+         ON CONFLICT (note_id, user_id)
+         DO UPDATE SET last_viewed_at = NOW(), view_count = note_views.view_count + 1`,
+        [noteId, socket.user.id]
+      );
     } catch (err) {
-      console.error('join-document error:', err.message);
-      socket.emit('document-error', 'Could not open document');
+      console.error('join-note error:', err.message);
+      socket.emit('note-error', 'Could not open note');
     }
   });
 
-  // Apply an incoming edit and broadcast it. Writes are only accepted for rooms
-  // the socket has actually joined (which required passing the access check).
-  socket.on('send-changes', async ({ documentId, update }) => {
-    if (!socket.rooms.has(documentId)) return;
+  socket.on('leave-note', (noteId) => {
+    if (!socket.rooms.has(noteId)) return;
+    socket.leave(noteId);
+    socket.roles.delete(noteId);
+    io.to(noteId).emit('viewers', presence.leave(noteId, socket.id));
+    releaseIfEmpty(noteId);
+  });
+
+  // Apply an incoming edit and broadcast it.
+  //
+  // Gated on the cached *role*, not merely on room membership. Viewers are in
+  // the room too — that is how they see live changes — so membership alone
+  // would let them write, which is exactly the hole this replaced.
+  socket.on('send-changes', async ({ noteId, update }) => {
+    const role = socket.roles.get(noteId);
+    if (role !== 'owner' && role !== 'editor') return;
 
     try {
-      const ydoc = await getDoc(documentId);
+      const ydoc = await getDoc(noteId);
       Y.applyUpdate(ydoc, new Uint8Array(update));
-      socket.to(documentId).emit('receive-changes', update);
-      scheduleSave(documentId);
+      socket.to(noteId).emit('receive-changes', update);
+      scheduleSave(noteId);
+
+      presence.touch(noteId, socket.id);
     } catch (err) {
       console.error('send-changes error:', err.message);
     }
   });
 
-  // Broadcast cursor position to others in the same (joined) room.
-  socket.on('cursor-update', ({ documentId, cursor }) => {
-    if (!socket.rooms.has(documentId)) return;
-    socket.to(documentId).emit('cursor-update', { socketId: socket.id, cursor });
+  // Cursor and selection positions, for collaborative cursors.
+  socket.on('awareness', ({ noteId, state }) => {
+    if (!socket.rooms.has(noteId)) return;
+    socket.to(noteId).emit('awareness', { socketId: socket.id, state });
   });
 
-  // On disconnect, flush + evict any document whose room is now empty.
   socket.on('disconnecting', () => {
+    for (const noteId of presence.leaveAll(socket.id)) {
+      io.to(noteId).emit('viewers', presence.roster(noteId));
+    }
     for (const room of socket.rooms) {
       if (room === socket.id) continue;
-      // rooms still include this socket here; size 1 means it's the last one.
+      // socket.rooms still includes this socket here, so size 1 means last one.
       const size = io.sockets.adapter.rooms.get(room)?.size ?? 0;
       if (size <= 1) {
-        release(room).catch((err) =>
-          console.error(`release(${room}) failed:`, err.message)
-        );
+        release(room).catch((err) => console.error(`release(${room}) failed:`, err.message));
       }
     }
   });
-
-  socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
-  });
 });
+
+function releaseIfEmpty(noteId) {
+  const size = io.sockets.adapter.rooms.get(noteId)?.size ?? 0;
+  if (size === 0) {
+    release(noteId).catch((err) => console.error(`release(${noteId}) failed:`, err.message));
+  }
+}
+
+/**
+ * Disconnect a user from a note's room after their access is revoked.
+ *
+ * Because roles are cached for the life of a socket, revocation has to reach
+ * into the socket layer explicitly — otherwise a collaborator who is already
+ * connected would keep editing until they happened to reload.
+ */
+async function revokeAccess(noteId, userId) {
+  const sockets = await io.in(noteId).fetchSockets();
+  for (const s of sockets) {
+    if (s.user?.id !== userId) continue;
+    s.emit('note-error', 'Your access to this note was removed');
+    s.leave(noteId);
+    presence.leave(noteId, s.id);
+  }
+  io.to(noteId).emit('viewers', presence.roster(noteId));
+}
+
+// Let the REST layer reach the socket layer without a circular import.
+app.set('revokeAccess', revokeAccess);
 
 httpServer.listen(config.PORT, () => {
   console.log(`Server running on http://localhost:${config.PORT}`);
