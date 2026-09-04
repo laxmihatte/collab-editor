@@ -1,12 +1,14 @@
 {
-  "name": "server",
+  "name": "notecraft-server",
   "version": "1.0.0",
-  "description": "",
+  "description": "NoteCraft API: notes, sharing, realtime collaboration, and sandboxed code execution",
   "main": "index.js",
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "npm run test:api && npm run test:realtime",
+    "test:api": "bash ../scripts/smoke-test.sh",
+    "test:realtime": "node scripts/realtime-test.js"
   },
   "keywords": [],
   "author": "",
@@ -26,6 +28,7 @@
     "yjs": "^13.6.31"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14"
+    "nodemon": "^3.1.14",
+    "socket.io-client": "^4.8.3"
   }
 }

@@ -22,7 +22,7 @@ export default function RegisterPage() {
     try {
       const res = await api.post('/api/auth/register', { name, email, password });
       saveAuth(res.data.user);
-      router.push('/documents');
+      router.push('/notes');
     } catch (err: unknown) {
       const msg =
         err instanceof Error

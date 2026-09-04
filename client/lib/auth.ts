@@ -7,11 +7,13 @@
 // the cookie, and a 401 means the session is actually gone.
 
 import api from './api';
+import type { AvatarColor } from './types';
 
 export interface User {
   id: string;
   email: string;
   name: string;
+  avatar_color?: AvatarColor;
 }
 
 export function getUser(): User | null {

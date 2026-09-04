@@ -1,86 +1,129 @@
-@import "tailwindcss";
+@import 'tailwindcss';
+@import 'highlight.js/styles/github.css';
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* Tailwind v4 defaults `dark:` to prefers-color-scheme. The profile lets a
+   user override their OS setting, so the variant is redefined to key off a
+   class that layout.tsx puts on <html>. */
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), system-ui, sans-serif;
 }
 
-/* Tiptap / ProseMirror editor content styles */
-.tiptap-editor .ProseMirror {
+/* ── CodeMirror ──────────────────────────────────────────────────────────── */
+/* The editor fills its pane and scrolls internally, so the page itself never
+   scrolls while you type. */
+.cm-editor {
+  height: 100%;
+  font-size: 0.9375rem;
+}
+.cm-editor.cm-focused {
   outline: none;
-  min-height: 60vh;
+}
+.cm-scroller {
+  font-family: var(--font-mono), ui-monospace, monospace;
   line-height: 1.7;
-  font-size: 1rem;
-  color: #1a1a1a;
+  padding: 1.5rem 0;
+}
+.cm-content {
+  padding: 0 1.5rem;
+}
+.cm-gutters {
+  border: none;
+  background: transparent;
 }
 
-.tiptap-editor .ProseMirror p {
-  margin: 0 0 0.75em;
+/* Remote collaborators' cursors, drawn by y-codemirror.next. The colour is set
+   inline per user; only the shape is defined here. */
+.cm-ySelectionCaret {
+  position: relative;
+  border-left: 2px solid;
+  border-right: 0;
+  margin-left: -1px;
+  box-sizing: border-box;
 }
-
-.tiptap-editor .ProseMirror h1 { font-size: 2em; font-weight: 700; margin: 0.5em 0; }
-.tiptap-editor .ProseMirror h2 { font-size: 1.5em; font-weight: 600; margin: 0.5em 0; }
-.tiptap-editor .ProseMirror h3 { font-size: 1.25em; font-weight: 600; margin: 0.5em 0; }
-
-.tiptap-editor .ProseMirror ul,
-.tiptap-editor .ProseMirror ol {
-  padding-left: 1.5em;
-  margin: 0 0 0.75em;
-}
-
-.tiptap-editor .ProseMirror li { margin: 0.25em 0; }
-
-.tiptap-editor .ProseMirror strong { font-weight: 700; }
-.tiptap-editor .ProseMirror em { font-style: italic; }
-.tiptap-editor .ProseMirror s { text-decoration: line-through; }
-
-.tiptap-editor .ProseMirror code {
-  background: #f0f0f0;
-  border-radius: 3px;
-  padding: 0.1em 0.3em;
-  font-family: monospace;
-  font-size: 0.9em;
-}
-
-.tiptap-editor .ProseMirror pre {
-  background: #f6f6f6;
-  border-radius: 6px;
-  padding: 0.75em 1em;
-  margin: 0 0 0.75em;
-  overflow-x: auto;
-}
-
-.tiptap-editor .ProseMirror blockquote {
-  border-left: 3px solid #d1d5db;
-  padding-left: 1em;
-  color: #6b7280;
-  margin: 0 0 0.75em;
-}
-
-.tiptap-editor .ProseMirror p.is-editor-empty:first-child::before {
-  content: attr(data-placeholder);
-  color: #adb5bd;
+.cm-ySelectionInfo {
+  position: absolute;
+  top: -1.15em;
+  left: -2px;
+  font-size: 0.65rem;
+  font-family: var(--font-sans), sans-serif;
+  font-weight: 600;
+  line-height: 1;
+  padding: 2px 4px;
+  color: #fff;
+  border-radius: 3px 3px 3px 0;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.2s;
   pointer-events: none;
-  float: left;
-  height: 0;
+  user-select: none;
 }
+.cm-ySelectionCaret:hover > .cm-ySelectionInfo,
+.cm-ySelectionInfo.cm-ySelectionInfo-visible {
+  opacity: 1;
+}
+
+/* ── Rendered markdown ───────────────────────────────────────────────────── */
+.prose-note {
+  line-height: 1.7;
+  color: #262626;
+}
+.dark .prose-note {
+  color: #d4d4d4;
+}
+.prose-note > * + * { margin-top: 0.85em; }
+.prose-note h1 { font-size: 1.75em; font-weight: 700; margin-top: 1.2em; letter-spacing: -0.02em; }
+.prose-note h2 { font-size: 1.35em; font-weight: 650; margin-top: 1.4em; letter-spacing: -0.01em; }
+.prose-note h3 { font-size: 1.1em; font-weight: 600; margin-top: 1.3em; }
+.prose-note ul { list-style: disc; padding-left: 1.4em; }
+.prose-note ol { list-style: decimal; padding-left: 1.4em; }
+.prose-note li + li { margin-top: 0.3em; }
+.prose-note a { color: #4f46e5; text-decoration: underline; text-underline-offset: 2px; }
+.dark .prose-note a { color: #a5b4fc; }
+.prose-note blockquote {
+  border-left: 3px solid #d4d4d4;
+  padding-left: 1em;
+  color: #737373;
+  font-style: italic;
+}
+.prose-note code {
+  background: #f5f5f5;
+  border-radius: 4px;
+  padding: 0.12em 0.35em;
+  font-size: 0.875em;
+  font-family: var(--font-mono), ui-monospace, monospace;
+}
+.dark .prose-note code { background: #262626; }
+.prose-note pre {
+  background: #fafafa;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  padding: 0.9em 1.1em;
+  overflow-x: auto;
+  font-size: 0.85em;
+}
+.dark .prose-note pre { background: #171717; border-color: #333; }
+.prose-note pre code { background: none; padding: 0; font-size: 1em; }
+.prose-note table { width: 100%; border-collapse: collapse; font-size: 0.9em; display: block; overflow-x: auto; }
+.prose-note th, .prose-note td { border: 1px solid #e5e5e5; padding: 0.45em 0.7em; text-align: left; }
+.dark .prose-note th, .dark .prose-note td { border-color: #333; }
+.prose-note th { background: #fafafa; font-weight: 600; }
+.dark .prose-note th { background: #1f1f1f; }
+.prose-note hr { border: 0; border-top: 1px solid #e5e5e5; margin: 1.6em 0; }
+.dark .prose-note hr { border-color: #333; }
+.prose-note input[type='checkbox'] { margin-right: 0.4em; }
+
+/* highlight.js ships a light theme; invert the essentials for dark mode
+   rather than loading a second stylesheet. */
+.dark .hljs { color: #d4d4d4; background: transparent; }
+.dark .hljs-keyword, .dark .hljs-selector-tag, .dark .hljs-built_in { color: #c792ea; }
+.dark .hljs-string, .dark .hljs-attr { color: #c3e88d; }
+.dark .hljs-number, .dark .hljs-literal { color: #f78c6c; }
+.dark .hljs-comment { color: #697098; font-style: italic; }
+.dark .hljs-title, .dark .hljs-function { color: #82aaff; }

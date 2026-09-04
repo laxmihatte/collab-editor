@@ -9,7 +9,7 @@ export default function Home() {
 
   useEffect(() => {
     if (isLoggedIn()) {
-      router.replace('/documents');
+      router.replace('/notes');
     } else {
       router.replace('/login');
     }
