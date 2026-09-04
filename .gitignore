@@ -21,3 +21,6 @@ npm-debug.log*
 # Editor
 .vscode/
 .idea/
+
+# Production secrets
+.env.production

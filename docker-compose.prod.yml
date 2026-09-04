@@ -1,0 +1,99 @@
+# Production stack: one host, one origin.
+#
+# Caddy is the only service with published ports. Everything else talks over
+# the internal Docker network, which is what keeps Postgres and the code
+# sandbox off the public internet — a sandbox reachable from outside would be
+# free compute for anyone who found it.
+
+# A project name of its own. Without it both compose files default to the
+# directory name, share one project, and `docker compose up` for development
+# quietly reconfigures the production stack's containers and volumes.
+name: notecraft
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env.production}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data      # certificates — losing this means re-issuing
+      - caddy-config:/config
+      - caddy-logs:/var/log/caddy
+    depends_on:
+      - web
+      - api
+
+  web:
+    build:
+      context: ./client
+      args:
+        # Empty: the browser calls /api on the same origin it loaded from.
+        NEXT_PUBLIC_API_URL: ''
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+
+  api:
+    build: ./server
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://notecraft:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/notecraft
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      CLIENT_URL: https://${DOMAIN}
+      PISTON_URL: http://piston:2000/api/v2/execute
+      # Same-origin deployment, so the auth cookie keeps SameSite=Lax.
+      COOKIE_SAMESITE: lax
+      TRUST_PROXY: 'true'
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: notecraft
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: notecraft
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      # Files here run only when the data directory is empty, so this
+      # initializes a new database and is skipped on every later start.
+      - ./server/src/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U notecraft -d notecraft']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  piston:
+    image: ghcr.io/engineer-man/piston:latest
+    restart: unless-stopped
+    # Piston builds its sandboxes with namespaces and cgroups, which need
+    # elevated rights. Note that no port is published: it is reachable only
+    # from the api service, over the internal network.
+    privileged: true
+    environment:
+      PISTON_RUN_TIMEOUT: 10000
+      PISTON_COMPILE_TIMEOUT: 20000
+      PISTON_RUN_MEMORY_LIMIT: 256000000
+      PISTON_OUTPUT_MAX_SIZE: 65536
+      PISTON_MAX_PROCESS_COUNT: 128
+    volumes:
+      - piston-packages:/piston/packages
+    tmpfs:
+      - /piston/jobs:exec,size=256m
+
+volumes:
+  caddy-data:
+  caddy-config:
+  caddy-logs:
+  db-data:
+  piston-packages:

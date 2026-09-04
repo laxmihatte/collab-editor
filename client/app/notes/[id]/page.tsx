@@ -6,6 +6,7 @@ import * as Y from 'yjs';
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protocols/awareness';
 import { io, type Socket } from 'socket.io-client';
 import api from '@/lib/api';
+import { SOCKET_URL } from '@/lib/config';
 import { clearLocalUser, getUser, isLoggedIn } from '@/lib/auth';
 import Avatar from '@/components/Avatar';
 import { LANGUAGE_LABELS, type Language, type Note, type Viewer } from '@/lib/types';
@@ -106,9 +107,7 @@ export default function NotePage() {
 
     // withCredentials sends the httpOnly auth cookie with the handshake; the
     // server verifies it before the connection is allowed at all.
-    const socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001', {
-      withCredentials: true,
-    });
+    const socket = io(SOCKET_URL, { withCredentials: true });
     socketRef.current = socket;
 
     socket.on('connect', () => {

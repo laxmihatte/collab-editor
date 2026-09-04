@@ -5,6 +5,8 @@
 # whitelist-only in February 2026 — and because owning the sandbox is the only
 # way to make guarantees about what student code can do.
 
+name: notecraft-dev
+
 services:
   piston:
     image: ghcr.io/engineer-man/piston:latest

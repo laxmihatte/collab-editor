@@ -33,7 +33,11 @@ const io = new Server(httpServer, {
   maxHttpBufferSize: 2e6, // a single Yjs update should never approach this
 });
 
+if (config.trustProxy) app.set('trust proxy', 1);
+
 app.use(helmet());
+// Same-origin deployments need no CORS at all, but the header is harmless and
+// keeps a split deployment working from the same build.
 app.use(cors({ origin: config.CLIENT_URL, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());

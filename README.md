@@ -75,7 +75,7 @@ Upgrading an existing `collab_editor` database instead? Apply the migrations in
 
 ```bash
 docker compose up -d
-./scripts/install-runtimes.sh    # downloads compilers; takes a few minutes
+node server/scripts/install-runtimes.js   # downloads compilers; takes a few minutes
 ```
 
 ### 3. Server
@@ -129,6 +129,21 @@ npm test
   convergence under concurrent edits, that a viewer's writes are refused over
   the socket, that presence tracks joins and leaves, and that content survives
   every client disconnecting
+
+## Deploying
+
+The whole stack runs on one host behind Caddy, on one domain. See
+[DEPLOYMENT.md](DEPLOYMENT.md) for the full runbook.
+
+The shape is forced by the code sandbox: Piston needs a privileged container,
+which no serverless platform allows, so a VM is required. Given that, putting
+everything on it keeps the app on a single origin — which lets the auth cookie
+stay `SameSite=Lax` instead of `None`.
+
+```bash
+./scripts/bootstrap-server.sh   # on a fresh Ubuntu host
+./scripts/deploy.sh             # build, start, install runtimes
+```
 
 ## Project structure
 

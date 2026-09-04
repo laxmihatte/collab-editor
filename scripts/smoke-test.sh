@@ -9,6 +9,16 @@
 set -u
 
 API="${API:-http://localhost:3001/api}"
+
+# INSECURE=1 skips certificate verification, for testing a stack behind a
+# locally-issued certificate. Never use it against the real deployment: it
+# would make a man-in-the-middle indistinguishable from a passing test.
+CURL_FLAGS=()
+[ "${INSECURE:-}" = "1" ] && CURL_FLAGS+=(-k)
+# Expanded as ${CURL_FLAGS[@]+"${CURL_FLAGS[@]}"} everywhere below: under
+# `set -u`, expanding an empty array with the plain form is an error in the
+# bash 3.2 that macOS ships.
+
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
@@ -30,16 +40,26 @@ PW="correct-horse-battery"
 api() { # api <cookiejar> <method> <path> [json]
   local jar=$1 method=$2 path=$3 body=${4:-}
   if [ -n "$body" ]; then
-    curl -s -o "$TMP/body" -w '%{http_code}' -b "$jar" -c "$jar" \
+    curl -s ${CURL_FLAGS[@]+"${CURL_FLAGS[@]}"} -o "$TMP/body" -w '%{http_code}' -b "$jar" -c "$jar" \
       -X "$method" "$API$path" -H 'Content-Type: application/json' -d "$body"
   else
-    curl -s -o "$TMP/body" -w '%{http_code}' -b "$jar" -c "$jar" -X "$method" "$API$path"
+    curl -s ${CURL_FLAGS[@]+"${CURL_FLAGS[@]}"} -o "$TMP/body" -w '%{http_code}' -b "$jar" -c "$jar" -X "$method" "$API$path"
   fi
 }
 field() { node -e "try{console.log(JSON.parse(require('fs').readFileSync('$TMP/body','utf8'))$1)}catch(e){console.log('')}"; }
 
 echo "Auth"
 code=$(api "$TMP/owner" POST /auth/register "{\"email\":\"$OWNER\",\"password\":\"$PW\",\"name\":\"Ada Lovelace\"}")
+
+# Each run registers two accounts, and /auth is capped at 20 attempts per 15
+# minutes per IP. Running the suite repeatedly trips it — which looks like the
+# entire API breaking, since every later assertion depends on being signed in.
+if [ "$code" = "429" ]; then
+  echo "  ! auth rate limit reached (20 attempts / 15 min per IP)."
+  echo "    Wait for the window to roll, or raise the cap in server/src/routes/auth.js."
+  exit 2
+fi
+
 check "owner registers" "$code" "201"
 code=$(api "$TMP/viewer" POST /auth/register "{\"email\":\"$VIEWER\",\"password\":\"$PW\",\"name\":\"Grace Hopper\"}")
 check "viewer registers" "$code" "201"
@@ -134,8 +154,8 @@ check "stats count collaborators" "$(field .collaborators)" "1"
 
 echo
 echo "Built-in compiler"
-if ! curl -s --max-time 3 "${PISTON_HOST:-http://localhost:2000}/api/v2/runtimes" >/dev/null 2>&1; then
-  echo "  - skipped (Piston not reachable; run: docker compose up -d)"
+if ! curl -s ${CURL_FLAGS[@]+"${CURL_FLAGS[@]}"} --max-time 5 "$API/execute/languages" -b "$TMP/owner" >/dev/null 2>&1; then
+  echo "  - skipped (execute endpoint unreachable)"
 else
   api "$TMP/owner" GET /execute/languages >/dev/null
   check "language list is offered" "$(field .length)" "8"

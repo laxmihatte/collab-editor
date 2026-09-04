@@ -13,6 +13,14 @@ const { io } = require('socket.io-client');
 const Y = require('yjs');
 
 const API = process.env.API || 'http://localhost:3001';
+
+// INSECURE=1 accepts a locally-issued certificate, for exercising a stack
+// behind Caddy's internal CA. Test-only: a real client must never do this.
+const INSECURE = process.env.INSECURE === '1';
+
+// fetch() has its own TLS stack (undici) that ignores the socket.io option
+// below, so trust has to be relaxed for both.
+if (INSECURE) process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 const STAMP = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 const PASSWORD = 'correct-horse-battery';
 
@@ -54,7 +62,11 @@ function connect(cookie, noteId) {
   return new Promise((resolve, reject) => {
     const socket = io(API, {
       extraHeaders: { Cookie: cookie },
-      transports: ['websocket'],
+      // Start on polling and let it upgrade, which is what a browser does.
+      // Forcing 'websocket' would skip the upgrade path entirely — and that
+      // path is the one a reverse proxy can break.
+      transports: ['polling', 'websocket'],
+      rejectUnauthorized: !INSECURE,
     });
 
     const ydoc = new Y.Doc();
@@ -95,10 +107,16 @@ async function main() {
     role: 'viewer',
   });
 
-  console.log('\nDocument sync');
+  console.log('\nTransport');
   const owner = await connect(ownerCookie, noteId);
   const viewer = await connect(viewerCookie, noteId);
-  await wait(300);
+  await wait(600);
+  // Socket.io opens on HTTP polling and upgrades. Behind a reverse proxy the
+  // upgrade is the part that silently fails, leaving a connection that works
+  // but falls back to polling every message.
+  check('the connection upgraded to a websocket', owner.socket.io.engine.transport.name, 'websocket');
+
+  console.log('\nDocument sync');
 
   owner.text.insert(0, '# Dijkstra\n\nRelax every edge.');
   await wait(400);
@@ -157,7 +175,10 @@ async function main() {
 
   console.log('\nUnauthenticated access');
   await new Promise((resolve) => {
-    const anon = io(API, { transports: ['websocket'] });
+    const anon = io(API, {
+      transports: ['polling', 'websocket'],
+      rejectUnauthorized: !INSECURE,
+    });
     anon.on('connect_error', (err) => {
       check('a socket with no cookie is refused', err.message, 'Authentication required');
       anon.close();
