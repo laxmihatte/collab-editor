@@ -32,6 +32,8 @@ export default function CompilerPanel({
   const [error, setError] = useState('');
   const [pinned, setPinned] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState<number | null>(null);
+  // Identifies a run, so the player can be keyed on it and remount cleanly.
+  const [runId, setRunId] = useState(0);
 
   const blocks = useMemo(() => extractCodeBlocks(markdown), [markdown]);
 
@@ -57,6 +59,7 @@ export default function CompilerPanel({
       });
       setResult(res.data);
       setElapsed(Math.round(performance.now() - started));
+      setRunId((n) => n + 1);
     } catch (err: unknown) {
       const message =
         (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
@@ -176,7 +179,9 @@ export default function CompilerPanel({
 
                 {/* When a program narrated itself, the animation is the
                     result — the raw frames below would be noise. */}
-                {!compileFailed && hasFrames && <VizPlayer frames={parsed!.frames} />}
+                {!compileFailed && hasFrames && (
+                  <VizPlayer key={runId} frames={parsed!.frames} />
+                )}
 
                 {!compileFailed && (hasFrames ? parsed!.output : result.run.stdout) && (
                   <Section label={hasFrames ? 'Printed output' : 'Output'}>

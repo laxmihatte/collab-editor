@@ -20,11 +20,11 @@ export default function VizPlayer({ frames }: { frames: Frame[] }) {
   const [playing, setPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
 
-  // A new run replaces the frames; start it from the beginning.
-  useEffect(() => {
-    setIndex(0);
-    setPlaying(true);
-  }, [frames]);
+  // Note: there is no effect here resetting the index when a new run arrives.
+  // The parent gives this component a key that changes per run, so React
+  // discards the old instance and mounts a fresh one already at frame zero.
+  // Resetting in an effect would render the stale frames first and then
+  // correct itself, which is both an extra pass and a visible flash.
 
   // setInterval rather than requestAnimationFrame: this advances on a fixed
   // wall-clock cadence a viewer can follow, not on the display's refresh rate.
