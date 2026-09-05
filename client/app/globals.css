@@ -127,3 +127,21 @@ body {
 .dark .hljs-number, .dark .hljs-literal { color: #f78c6c; }
 .dark .hljs-comment { color: #697098; font-style: italic; }
 .dark .hljs-title, .dark .hljs-function { color: #82aaff; }
+
+/* ── Visualization palette ───────────────────────────────────────────────── */
+/* Defined as variables so the SVG renderers carry no theme logic of their own
+   and stay correct when the page theme changes. */
+:root {
+  --viz-bar: #c7d2fe;
+  --viz-highlight: #6366f1;
+  --viz-sorted: #10b981;
+  --viz-current: #f59e0b;
+  --viz-edge: #d4d4d4;
+}
+.dark {
+  --viz-bar: #3730a3;
+  --viz-highlight: #818cf8;
+  --viz-sorted: #34d399;
+  --viz-current: #fbbf24;
+  --viz-edge: #404040;
+}

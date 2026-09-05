@@ -3,6 +3,8 @@
 import { useMemo, useState } from 'react';
 import api from '@/lib/api';
 import { blockAtLine, extractCodeBlocks } from '@/lib/markdown';
+import { parseFrames } from '@/lib/frames';
+import VizPlayer from './viz/VizPlayer';
 import { LANGUAGE_LABELS, type ExecutionResult, type Language } from '@/lib/types';
 
 /**
@@ -66,6 +68,15 @@ export default function CompilerPanel({
   }
 
   const compileFailed = result?.compile != null && result.compile.code !== 0;
+
+  // Derived from the result rather than held in its own state: the frames are
+  // a view of this run's stdout, and storing them separately would let the two
+  // drift apart on the next run.
+  const parsed = useMemo(
+    () => (result ? parseFrames(result.run.stdout) : null),
+    [result]
+  );
+  const hasFrames = (parsed?.frames.length ?? 0) > 0;
 
   return (
     <aside className="flex h-full flex-col border-l border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950">
@@ -163,8 +174,14 @@ export default function CompilerPanel({
                   </Section>
                 )}
 
-                {!compileFailed && result.run.stdout && (
-                  <Section label="Output">{result.run.stdout}</Section>
+                {/* When a program narrated itself, the animation is the
+                    result — the raw frames below would be noise. */}
+                {!compileFailed && hasFrames && <VizPlayer frames={parsed!.frames} />}
+
+                {!compileFailed && (hasFrames ? parsed!.output : result.run.stdout) && (
+                  <Section label={hasFrames ? 'Printed output' : 'Output'}>
+                    {hasFrames ? parsed!.output : result.run.stdout}
+                  </Section>
                 )}
 
                 {!compileFailed && result.run.stderr && (
@@ -173,7 +190,7 @@ export default function CompilerPanel({
                   </Section>
                 )}
 
-                {!compileFailed && !result.run.stdout && !result.run.stderr && (
+                {!compileFailed && !hasFrames && !result.run.stdout && !result.run.stderr && (
                   <Section label="Output" muted>
                     (no output)
                   </Section>
@@ -201,6 +218,11 @@ export default function CompilerPanel({
                   )}
                   {elapsed !== null && <span>{elapsed} ms round trip</span>}
                   <span className="font-mono">{LANGUAGE_LABELS[result.language]} {result.version}</span>
+                  {hasFrames && (
+                    <span className="text-indigo-600 dark:text-indigo-400">
+                      {parsed!.frames.length} frames
+                    </span>
+                  )}
                 </p>
               </div>
             )}

@@ -333,7 +333,7 @@ export default function NotePage() {
         )}
 
         {showCompiler && (
-          <div className="w-80 shrink-0">
+          <div className="w-96 shrink-0">
             <CompilerPanel
               markdown={markdown}
               focusedLine={focusedLine}
