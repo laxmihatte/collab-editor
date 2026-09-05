@@ -1,5 +1,10 @@
 # NoteCraft
 
+![Two people editing the same note, with code running](docs/demo.gif)
+
+*Left: Ada types. Right: Sam sees it appear, reacts, and runs the code block —
+`{'A': 0, 'B': 3, 'C': 2, 'D': 8}` in 213 ms.*
+
 Collaborative markdown notes for computer science students. Two people can type
 in the same note at once, run the code blocks inside it, and react to each
 other's work — with a live list of who is reading it right now.

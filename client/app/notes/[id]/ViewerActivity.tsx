@@ -70,12 +70,14 @@ export default function ViewerActivity({
             return (
               <li key={viewer.userId} className="flex items-center gap-2">
                 <Avatar name={viewer.name} color={viewer.avatarColor} size="sm" ring={typing} />
+                {/* The name truncates; the "(you)" marker must not, or it is
+                    the first thing to disappear in a narrow panel. */}
                 <span className="min-w-0 flex-1 truncate text-neutral-800 dark:text-neutral-200">
                   {viewer.name}
-                  {viewer.userId === currentUserId && (
-                    <span className="text-neutral-400"> (you)</span>
-                  )}
                 </span>
+                {viewer.userId === currentUserId && (
+                  <span className="shrink-0 text-[11px] text-neutral-400">you</span>
+                )}
                 {viewer.tabs > 1 && (
                   <span className="text-[10px] text-neutral-400" title={`${viewer.tabs} tabs open`}>
                     ×{viewer.tabs}

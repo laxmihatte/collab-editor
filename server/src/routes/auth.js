@@ -55,7 +55,8 @@ router.post('/register', async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 12);
 
     const result = await db.query(
-      'INSERT INTO users (email, password_hash, name) VALUES ($1, $2, $3) RETURNING id, email, name',
+      `INSERT INTO users (email, password_hash, name) VALUES ($1, $2, $3)
+       RETURNING id, email, name, avatar_color`,
       [normalizeEmail(email), passwordHash, name.trim()]
     );
 
@@ -95,7 +96,14 @@ router.post('/login', async (req, res) => {
 
     setAuthCookie(res, user);
 
-    res.json({ user: { id: user.id, email: user.email, name: user.name } });
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        avatar_color: user.avatar_color,
+      },
+    });
   } catch (err) {
     console.error('login error:', err.message);
     res.status(500).json({ error: 'Server error' });

@@ -19,7 +19,10 @@ function join(noteId, socketId, viewer) {
     room = new Map();
     rooms.set(noteId, room);
   }
-  room.set(socketId, { ...viewer, joinedAt: Date.now(), activeAt: Date.now() });
+  // activeAt starts at 0, not now: it means "last edited", and seeding it with
+  // the join time made everyone look like they were typing for the first few
+  // seconds after opening a note.
+  room.set(socketId, { ...viewer, joinedAt: Date.now(), activeAt: 0 });
   return roster(noteId);
 }
 
