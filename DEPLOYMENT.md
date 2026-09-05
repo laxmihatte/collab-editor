@@ -159,3 +159,14 @@ be sad to lose.
   move to the 4 GB bundle.
 - **Rate limits:** auth is capped at 20 attempts per 15 minutes per IP, and code
   execution at 30 runs per minute per user. Both are in the route files.
+  Running the test suite several times in a row will trip the auth limit; the
+  suite now says so rather than reporting every assertion as a failure.
+- **Container running but unreachable:** if a start ever fails on a port
+  conflict, `docker compose up -d` afterwards will happily *start* the
+  half-created container — which has no port bindings. `docker ps` shows
+  `80/tcp` instead of `0.0.0.0:80->80/tcp`. Fix with:
+
+  ```bash
+  docker compose -f docker-compose.prod.yml --env-file .env.production \
+    up -d --force-recreate caddy
+  ```
